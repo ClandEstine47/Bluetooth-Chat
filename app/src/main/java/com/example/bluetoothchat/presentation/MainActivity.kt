@@ -1,4 +1,4 @@
-package com.example.bluetoothchat
+package com.example.bluetoothchat.presentation
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
