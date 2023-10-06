@@ -4,15 +4,25 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothServerSocket
+import android.bluetooth.BluetoothSocket
 import android.content.Context
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import com.example.bluetoothchat.domain.chat.BluetoothController
 import com.example.bluetoothchat.domain.chat.BluetoothDeviceDomain
+import com.example.bluetoothchat.domain.chat.ConnectionResult
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.update
+import java.io.IOException
+import java.util.UUID
 
 @SuppressLint("MissingPermission")
 class AndroidBluetoothController(
@@ -40,6 +50,9 @@ class AndroidBluetoothController(
             if (newDevice in devices) devices else devices + newDevice
         }
     }
+
+    private var currentServerSocket: BluetoothServerSocket? = null
+    private var currentClientSocket: BluetoothSocket? = null
 
     init {
         updatePairedDevices()
@@ -70,8 +83,79 @@ class AndroidBluetoothController(
         bluetoothAdapter?.cancelDiscovery()
     }
 
+    override fun startBluetoothServer(): Flow<ConnectionResult> {
+        return flow {
+            if (!hasPermission(Manifest.permission.BLUETOOTH_CONNECT)) {
+                    throw SecurityException("No BLUETOOTH_CONNECT Permission")
+            }
+
+            currentServerSocket = bluetoothAdapter?.listenUsingRfcommWithServiceRecord(
+                "chat_service",
+                UUID.fromString(SERVICE_UUID)
+            )
+
+            var shouldLoop = true
+
+            while (shouldLoop) {
+                currentClientSocket = try {
+                    currentServerSocket?.accept()
+                } catch (e: IOException) {
+                    shouldLoop = false
+                    null
+                }
+
+                emit(ConnectionResult.ConnectionEstablished)
+                currentClientSocket?.let {
+                    currentClientSocket?.close()
+                }
+            }
+        }.onCompletion {
+            closeConnection()
+        }.flowOn(Dispatchers.IO)
+    }
+
+    override fun connectToDevice(device: BluetoothDeviceDomain): Flow<ConnectionResult> {
+        return flow {
+            if (!hasPermission(Manifest.permission.BLUETOOTH_CONNECT)) {
+                throw SecurityException("No BLUETOOTH_CONNECT Permission")
+            }
+
+            currentClientSocket = bluetoothAdapter
+                ?.getRemoteDevice(device.address)
+                ?.createRfcommSocketToServiceRecord(
+                    UUID.fromString(SERVICE_UUID)
+                )
+            stopDiscovery()
+
+            currentClientSocket?.let { socket ->
+                try {
+                    socket.connect()
+                    emit(ConnectionResult.ConnectionEstablished)
+
+                } catch (e: IOException) {
+                    socket.close()
+                    currentClientSocket = null
+                    emit(ConnectionResult.Error("Connection was interrupted"))
+                }
+            }
+
+        }.onCompletion {
+            closeConnection()
+        }.flowOn(Dispatchers.IO)
+    }
+
+    override fun closeConnection() {
+
+        currentServerSocket?.close()
+        currentClientSocket?.close()
+        currentServerSocket = null
+        currentClientSocket = null
+
+    }
+
     override fun release() {
         context.unregisterReceiver(foundDeviceReceiver)
+        closeConnection()
     }
 
     private fun updatePairedDevices() {
@@ -89,5 +173,9 @@ class AndroidBluetoothController(
 
     private fun hasPermission(permission: String): Boolean {
         return context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+    }
+
+    companion object {
+        const val SERVICE_UUID = "ffa3cb34-641c-11ee-8c99-0242ac120002"
     }
 }
