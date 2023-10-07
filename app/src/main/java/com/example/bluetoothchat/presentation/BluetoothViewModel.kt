@@ -63,6 +63,15 @@ class BluetoothViewModel @Inject constructor(
         ) }
     }
 
+    fun waitForIncomingConnections() {
+        _state.update { it.copy(
+            isConnecting = true
+        ) }
+        deviceConnectionJob = bluetoothController
+            .startBluetoothServer()
+            .listen()
+    }
+
     fun startScan() {
         bluetoothController.startDiscovery()
     }
