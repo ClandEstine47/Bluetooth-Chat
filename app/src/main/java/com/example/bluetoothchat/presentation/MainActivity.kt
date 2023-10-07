@@ -105,8 +105,10 @@ class MainActivity : ComponentActivity() {
                         else -> {
                             DeviceScreen(
                                 state = state,
-                                onStartScan = { viewModel::startScan },
-                                onStopScan = { viewModel::stopScan }
+                                onStartScan = viewModel::startScan,
+                                onStopScan = viewModel::stopScan,
+                                onStartServer = viewModel::waitForIncomingConnections,
+                                onDeviceClick = viewModel::connectToDevice
                             )
                         }
                     }
