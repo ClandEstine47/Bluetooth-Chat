@@ -8,6 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.withContext
 import java.io.IOException
 
 class BluetoothDataTransferService(
@@ -35,5 +36,18 @@ class BluetoothDataTransferService(
                 )
             }
         }.flowOn(Dispatchers.IO)
+    }
+
+    suspend fun sendMessage(bytes: ByteArray): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                socket.outputStream.write(bytes)
+            } catch (e: IOException) {
+                e.printStackTrace()
+                return@withContext false
+            }
+
+            true
+        }
     }
 }
